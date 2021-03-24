@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
-import 'bootstrap/dist/css/bootstrap.min.css'
+import React, { useState, useEffect } from 'react'
 
+import 'bootstrap/dist/css/bootstrap.min.css'
 import Navbar from 'react-bootstrap/Navbar'
 import Nav from 'react-bootstrap/Nav'
 import Jumbotron from 'react-bootstrap/Jumbotron'
@@ -8,14 +8,48 @@ import Form from 'react-bootstrap/Form'
 import FormControl from 'react-bootstrap/FormControl'
 import Button from 'react-bootstrap/Button'
 import Toast from 'react-bootstrap/Toast'
+import Card from 'react-bootstrap/Card'
+import Alert from 'react-bootstrap/Alert'
 
-import { FaCloudRain } from 'react-icons/fa'
+import { FaCloudRain, FaArrowDown, FaArrowUp, FaWindowsClose, FaWindowClose } from 'react-icons/fa'
+import { Row } from 'react-bootstrap'
 
 function App(){
   const [cidade, setCidade] = useState('')
   const [clima, setClima] = useState(null)
   const [erroClima, setErroClima] = useState(null)
+  const [erroGeo, setErroGeo] = useState(null)
 
+  const listaErrosGeo =[ 
+    {"Código": 1, "texto" : "Não foi dada permissão para  o sistema encontrar a sua localização"},
+    {"Codigo":2,"texto":"Não foi possível obter sua localização"},
+    {"Codigo":3,"texto":"O tempo para obter a localização foi expirado!"}]
+
+  useEffect(() => {
+    if('geolocation' in navigator){
+      navigator.geolocation.getCurrentPosition(function (position){
+       // console.log(position)
+        position.coords && obtemCidade(position.coords.latitude, position.coords.longitude)
+      }, function (error){
+        //console.error(error)
+        setErroGeo(error.code)
+      })
+    }
+
+  async function obtemCidade(latitude, longitude){
+    const apikeyGeo = process.env.REACT_APP_APIGEO
+    let url=`https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${apikeyGeo}`
+    await fetch(url)
+    .then(response => response.json())
+    .then(data => {
+      //console.log(data)
+      setCidade(data.results[0].components.city+', '+data.results[0].components.country)
+    })
+    .catch(function (error){
+      console.error(`Erro ao obter a cidade a partir da latitude/longitude: ${error.message}`)
+    })
+  }
+},[])
   async function obtemClima(cidade){
     const apiWeather = process.env.REACT_APP_APIWEATHER
     let urlClima = `http://api.openweathermap.org/data/2.5/weather?q=${cidade}&lang=pt&units=metric&appid=${apiWeather}`
@@ -23,9 +57,22 @@ function App(){
     .then(response => response.json())
     .then(data => {
       console.log(data)
-      data.cod === '404' 
-      ? setErroClima('Cidade não encontrada!')
-      : setClima(data)
+      switch (data.cod){
+        case '401':
+          setErroClima('A API Key informada é inválida!!')
+          setClima(null)
+          break
+        case '404':
+          setErroClima('A Cidade informada não foi encontrada!!')
+          setClima(null)
+          break
+        case '429':
+          setErroClima('O uso gratuido da API foi ultrapassado!!')
+          setClima(null)
+          break
+        default:
+          setClima(data)
+      }
       
     })
     .catch(function (error) {
@@ -44,8 +91,9 @@ function App(){
         <Form inline>
           <FormControl type="text" value={cidade}
            onChange={event => setCidade(event.target.value)}
-           placeholder="Digite a cidade..." />&nbsp;       
-        <Button variant="danger" onClick={() => obtemClima(cidade)}><FaCloudRain/> Obter Clima</Button>
+           placeholder="Digite a cidade..." />&nbsp;
+        <Button variant="outline-dark" size="small" onClick={() => setCidade("")}><FaWindowClose/></Button>   
+        <Button variant="danger" disabled={cidade.length < 3} onClick={() => obtemClima(cidade)}><FaCloudRain/> Obter Clima</Button>
         </Form>
       </Navbar>
 
@@ -67,11 +115,37 @@ function App(){
            App desenvolvido em ReactJS e integrado com as API´s Opencagedata e OpenWeatherMap
         </p>
       </Jumbotron>
+      {erroGeo &&
+      <Alert variant="danger" onClose={() => setErroGeo(null)} dismissible >
+        <Alert.Heading>Ops! Ocorreu um erro ao obter sua localização</Alert.Heading>
+        <p>
+          {listaErrosGeo[erroGeo].texto}
+        </p>
+      </Alert>
+
+      }
       {clima &&
-      <p>Cidade: {clima.name} - Temperatura: {clima.main.temp} </p>
+        <Row className="justify-content-center">
+          <Card bg="primary" className="text-center">
+            <Card.Header>
+              {clima.name}
+              <h2>{clima.name}</h2>
+              <h3>{clima.main.temp}&#8451;</h3>
+              <h4>min: {clima.main.temp_min}&#8451;<FaArrowDown className="text-danger"/> -
+                  máx: {clima.main.temp_max}&#8451;<FaArrowUp className="text-success"/></h4>
+            </Card.Header>
+            <Card.Body className="bg-light">
+              <Card.Img src={`http://openweathermap.org/img/wn/${clima.weather[0].icon}@4x.png`}
+                      title={clima.weather[0].description} />
+              <Card.Title className="text-dark">{clima.weather[0].description}</Card.Title>
+            </Card.Body>
+            <Card.Footer className="text-light">
+              Última atualização em: {new Date(clima.dt * 1000).toLocaleString('pt-BR')}
+            </Card.Footer>
+            </Card>
+        </Row>
       }
     </>
   )
 }
-
 export default App
